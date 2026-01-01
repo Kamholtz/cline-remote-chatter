@@ -34,6 +34,15 @@ pip install -r requirements.txt
 python cline_telegram_bot.py
 ```
 
+## Chat History Review
+
+The bot now records every inbound user message and outbound Cline output to `chat_history.jsonl` (or the path configured through `CHAT_HISTORY_FILE`). Each entry is stored as a newline-delimited JSON object so you can audit the full session history.
+
+To replay that log with parsing diffs, run:
+```bash
+python parse_chat_history.py [path/to/chat_history.jsonl]
+```
+
 ## Configuration
 
 Create a `.env` file with your Telegram bot token and authorized user ID:
