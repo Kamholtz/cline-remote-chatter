@@ -1,0 +1,42 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"workbench.colorCustomizations": {
+			"activityBar.activeBackground": "#ee88aa",
+			"activityBar.background": "#ee88aa",
+			"activityBar.foreground": "#15202b",
+			"activityBar.inactiveForeground": "#15202b99",
+			"activityBarBadge.background": "#d7f7c7",
+			"activityBarBadge.foreground": "#15202b",
+			"commandCenter.border": "#15202b99",
+			"sash.hoverBorder": "#ee88aa",
+			"statusBar.background": "#e85b8a",
+			"statusBar.foreground": "#15202b",
+			"statusBarItem.hoverBackground": "#e22e6a",
+			"statusBarItem.remoteBackground": "#e85b8a",
+			"statusBarItem.remoteForeground": "#15202b",
+			"titleBar.activeBackground": "#e85b8a",
+			"titleBar.activeForeground": "#15202b",
+			"titleBar.inactiveBackground": "#e85b8a99",
+			"titleBar.inactiveForeground": "#15202b99"
+		},
+		"peacock.color": "#e85b8a"
+	},
+	"tasks": {
+		"version": "2.0.0",
+		"tasks": [
+			{
+				"label": "run",
+				"type": "shell",
+				"command": "./venv/bin/python3 cline_telegram_bot.py",
+				"problemMatcher": [
+					"$python"
+				]
+			}
+		]
+	}
+}
