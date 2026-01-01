@@ -31,6 +31,45 @@ class ClineTelegramBot:
         self.application: Application | None = None
         debug_log(DEBUG_INFO, "Telegram bot initialized")
 
+    def _log_outbound_telegram_message(
+        self, chat_id: int | None, text: str, *, user_id: int | None = None, message_id: int | None = None
+    ) -> None:
+        """Record every application-to-Telegram reply for auditing."""
+        log_chat_history_event(
+            {
+                "type": "application_to_telegram",
+                "direction": "outbound",
+                "chat_id": chat_id,
+                "user_id": user_id,
+                "message_id": message_id,
+                "text": text,
+            }
+        )
+
+    async def _reply_and_log(self, update: Update, text: str, **kwargs):
+        """Reply to the user and log the outbound message."""
+        if not update.message:
+            return None
+        message = await update.message.reply_text(text, **kwargs)
+        self._log_outbound_telegram_message(
+            update.effective_chat.id if update.effective_chat else None,
+            text,
+            user_id=update.effective_user.id if update.effective_user else None,
+            message_id=getattr(message, "message_id", None),
+        )
+        return message
+
+    async def _send_message_and_log(self, bot, chat_id: int, text: str, *, user_id: int | None = None, **kwargs):
+        """Send a message to an arbitrary chat and log it."""
+        message = await bot.send_message(chat_id=chat_id, text=text, **kwargs)
+        self._log_outbound_telegram_message(
+            chat_id,
+            text,
+            user_id=user_id,
+            message_id=getattr(message, "message_id", None),
+        )
+        return message
+
     def is_waiting_for_input(self) -> bool:
         return False
 
@@ -78,6 +117,7 @@ class ClineTelegramBot:
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         message_text = update.message.text.strip() if update.message.text else ""
+        chat_id = update.effective_chat.id if update.effective_chat else None
 
         is_command_message = message_text.startswith("/") if message_text else False
         log_chat_history_event(
@@ -105,93 +145,115 @@ class ClineTelegramBot:
 
         if user_id != AUTHORIZED_USER_ID:
             debug_log(DEBUG_WARN, "Unauthorized user attempted access", user_id=user_id)
-            await update.message.reply_text("❌ Unauthorized access")
+            await self._reply_and_log(update, "❌ Unauthorized access")
             return
 
         if message_text.startswith("/agent"):
             parts = message_text.split()
             available = list(self.agent_manager.available_agent_types())
             if len(parts) == 1:
-                await update.message.reply_text(
+                await self._reply_and_log(
+                    update,
                     f"Current agent: `{self.agent_manager.current_agent_type}`\n"
-                    f"Available: {', '.join(available)}"
+                    f"Available: {', '.join(available)}",
                 )
                 return
 
             requested = parts[1].lower()
             if requested not in available:
-                await update.message.reply_text(
-                    f"Unsupported agent `{requested}`. Supported: {', '.join(available)}"
+                await self._reply_and_log(
+                    update,
+                    f"Unsupported agent `{requested}`. Supported: {', '.join(available)}",
                 )
                 return
 
             await self.agent_manager.set_agent_type(requested)
-            await update.message.reply_text(
-                f"Switched to `{requested}` agent. Start a session with /start."
+            await self._reply_and_log(
+                update, f"Switched to `{requested}` agent. Start a session with /start."
             )
             return
 
         if message_text == "/start":
             if not self.session_active:
                 if await self.start_agent():
-                    await update.message.reply_text("✅ Cline session started via ACP")
+                    await self._reply_and_log(update, "✅ Cline session started via ACP")
                 else:
-                    await update.message.reply_text("❌ Failed to start Cline session")
+                    await self._reply_and_log(update, "❌ Failed to start Cline session")
             else:
-                await update.message.reply_text("ℹ️ Session already running")
+                await self._reply_and_log(update, "ℹ️ Session already running")
             return
 
         if message_text == "/stop":
             if self.session_active:
                 await self.stop_agent()
-                await update.message.reply_text("🛑 Session stopped")
+                await self._reply_and_log(update, "🛑 Session stopped")
             else:
-                await update.message.reply_text("ℹ️ No session to stop")
+                await self._reply_and_log(update, "ℹ️ No session to stop")
             return
 
         if message_text == "/status":
             status = "🟢 Running" if self.session_active else "🔴 Stopped"
-            await update.message.reply_text(f"Status: {status}")
+            await self._reply_and_log(update, f"Status: {status}")
             return
 
         if message_text == "/cancel":
             if self.session_active:
                 canceled = await self.cancel_agent()
-                await update.message.reply_text("🛑 Cancel signal sent" if canceled else "⚠️ Unable to cancel")
+                await self._reply_and_log(
+                    update, "🛑 Cancel signal sent" if canceled else "⚠️ Unable to cancel"
+                )
                 await asyncio.sleep(0.5)
                 output = self.get_pending_output()
                 if output:
-                    await context.bot.send_message(chat_id=update.effective_chat.id, text=output)
+                    if chat_id is not None:
+                        await self._send_message_and_log(
+                            context.bot, chat_id, output, user_id=user_id
+                        )
             else:
-                await update.message.reply_text("❌ No active session to cancel")
+                await self._reply_and_log(update, "❌ No active session to cancel")
             return
 
         if message_text in ("/plan", "/act"):
             if self.session_active:
                 await self.send_command_to_agent(message_text)
-                await context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text=f"⚡ Sent {message_text} to the agent",
-                )
+                if chat_id is not None:
+                    await self._send_message_and_log(
+                        context.bot,
+                        chat_id,
+                        f"⚡ Sent {message_text} to the agent",
+                        user_id=user_id,
+                    )
                 await asyncio.sleep(0.5)
                 output = self.get_pending_output()
                 if output:
-                    await context.bot.send_message(chat_id=update.effective_chat.id, text=output)
+                    if chat_id is not None:
+                        await self._send_message_and_log(
+                            context.bot, chat_id, output, user_id=user_id
+                        )
             else:
-                await update.message.reply_text("❌ Start a session first")
+                await self._reply_and_log(update, "❌ Start a session first")
             return
 
         if self.session_active:
             await self.send_command_to_agent(message_text)
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="📤 Command sent")
+            if chat_id is not None:
+                await self._send_message_and_log(
+                    context.bot, chat_id, "📤 Command sent", user_id=user_id
+                )
             await asyncio.sleep(0.5)
             output = self.get_pending_output()
             if output:
-                await context.bot.send_message(chat_id=update.effective_chat.id, text=output)
+                if chat_id is not None:
+                    await self._send_message_and_log(
+                        context.bot, chat_id, output, user_id=user_id
+                    )
             else:
-                await context.bot.send_message(chat_id=update.effective_chat.id, text="⏳ Waiting for response...")
+                if chat_id is not None:
+                    await self._send_message_and_log(
+                        context.bot, chat_id, "⏳ Waiting for response...", user_id=user_id
+                    )
         else:
-            await update.message.reply_text("❌ No active session. Use /start to begin.")
+            await self._reply_and_log(update, "❌ No active session. Use /start to begin.")
 
 
 async def output_monitor(bot_instance: ClineTelegramBot, application: Application):
@@ -200,7 +262,12 @@ async def output_monitor(bot_instance: ClineTelegramBot, application: Applicatio
         if bot_instance.session_active and bot_instance.output_queue:
             output = bot_instance.get_pending_output()
             if output:
-                await application.bot.send_message(chat_id=AUTHORIZED_USER_ID, text=output)
+                await bot_instance._send_message_and_log(
+                    application.bot,
+                    AUTHORIZED_USER_ID,
+                    output,
+                    user_id=AUTHORIZED_USER_ID,
+                )
         await asyncio.sleep(1)
 
 
