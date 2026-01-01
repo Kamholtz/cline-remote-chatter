@@ -36,6 +36,19 @@
 				"problemMatcher": [
 					"$python"
 				]
+			},
+			{
+				"label": "run - PARSING_DEBUG",
+				"type": "shell",
+				"command": "./venv/bin/python3 cline_telegram_bot.py",
+				"options": {
+					"env": {
+						"PARSING_DEBUG": "1"
+					}
+				},
+				"problemMatcher": [
+					"$python"
+				]
 			}
 		]
 	}
