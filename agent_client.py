@@ -178,7 +178,8 @@ class TelegramACPClient(Client):
         if not content:
             return None
         if text := getattr(content, "text", None):
-            return str(text).strip()
+            # Keep the chunk's original whitespace so adjoining chunks don't run together.
+            return str(text)
         if resource := getattr(content, "resource", None):
             if uri := getattr(resource, "uri", None):
                 return f"Embedded resource: {uri}"
