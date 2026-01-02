@@ -117,6 +117,12 @@ class ClineTelegramBot:
             if len(combined) + len(chunk) > max_length:
                 self.output_queue.appendleft(chunk)
                 break
+            if (
+                combined
+                and combined.rstrip().endswith("**")
+                and chunk.lstrip().startswith("**")
+            ):
+                combined += "\n"
             combined += chunk
         result = combined.strip()
         debug_log(
