@@ -4,6 +4,7 @@ from collections import deque
 
 from dotenv import load_dotenv
 from telegram import Update
+from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 from agent_client import AgentClientManager
@@ -20,6 +21,7 @@ load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 AUTHORIZED_USER_ID = int(os.getenv("AUTHORIZED_USER_ID", "0"))
+AGENT_OUTPUT_PARSE_MODE = ParseMode.MARKDOWN
 
 
 class ClineTelegramBot:
@@ -46,11 +48,13 @@ class ClineTelegramBot:
             }
         )
 
-    async def _reply_and_log(self, update: Update, text: str, **kwargs):
+    async def _reply_and_log(
+        self, update: Update, text: str, *, parse_mode: ParseMode | str | None = None, **kwargs
+    ):
         """Reply to the user and log the outbound message."""
         if not update.message:
             return None
-        message = await update.message.reply_text(text, **kwargs)
+        message = await update.message.reply_text(text, parse_mode=parse_mode, **kwargs)
         self._log_outbound_telegram_message(
             update.effective_chat.id if update.effective_chat else None,
             text,
@@ -59,9 +63,18 @@ class ClineTelegramBot:
         )
         return message
 
-    async def _send_message_and_log(self, bot, chat_id: int, text: str, *, user_id: int | None = None, **kwargs):
+    async def _send_message_and_log(
+        self,
+        bot,
+        chat_id: int,
+        text: str,
+        *,
+        user_id: int | None = None,
+        parse_mode: ParseMode | str | None = None,
+        **kwargs,
+    ):
         """Send a message to an arbitrary chat and log it."""
-        message = await bot.send_message(chat_id=chat_id, text=text, **kwargs)
+        message = await bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode, **kwargs)
         self._log_outbound_telegram_message(
             chat_id,
             text,
@@ -207,7 +220,11 @@ class ClineTelegramBot:
                 if output:
                     if chat_id is not None:
                         await self._send_message_and_log(
-                            context.bot, chat_id, output, user_id=user_id
+                            context.bot,
+                            chat_id,
+                            output,
+                            user_id=user_id,
+                            parse_mode=AGENT_OUTPUT_PARSE_MODE,
                         )
             else:
                 await self._reply_and_log(update, "❌ No active session to cancel")
@@ -228,7 +245,11 @@ class ClineTelegramBot:
                 if output:
                     if chat_id is not None:
                         await self._send_message_and_log(
-                            context.bot, chat_id, output, user_id=user_id
+                            context.bot,
+                            chat_id,
+                            output,
+                            user_id=user_id,
+                            parse_mode=AGENT_OUTPUT_PARSE_MODE,
                         )
             else:
                 await self._reply_and_log(update, "❌ Start a session first")
@@ -245,7 +266,11 @@ class ClineTelegramBot:
             if output:
                 if chat_id is not None:
                     await self._send_message_and_log(
-                        context.bot, chat_id, output, user_id=user_id
+                        context.bot,
+                        chat_id,
+                        output,
+                        user_id=user_id,
+                        parse_mode=AGENT_OUTPUT_PARSE_MODE,
                     )
             else:
                 if chat_id is not None:
@@ -267,6 +292,7 @@ async def output_monitor(bot_instance: ClineTelegramBot, application: Applicatio
                     AUTHORIZED_USER_ID,
                     output,
                     user_id=AUTHORIZED_USER_ID,
+                    parse_mode=AGENT_OUTPUT_PARSE_MODE,
                 )
         await asyncio.sleep(1)
 
